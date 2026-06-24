@@ -1,0 +1,6 @@
+node_modules/
+dist/
+test/config.json
+results/
+*.log
+.env

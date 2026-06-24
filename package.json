@@ -1,0 +1,54 @@
+{
+  "name": "thinking-agent-mcp",
+  "version": "1.0.0",
+  "description": "MCP Server: chat_agent tool for extending thinking model's chain of thought via non-thinking model calls",
+  "main": "dist/index.js",
+  "type": "commonjs",
+  "engines": {
+    "node": ">=16.0.0"
+  },
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "dev": "ts-node src/index.ts",
+    "prepublishOnly": "npm run build",
+    "test:with-tool": "ts-node test/testFramework.ts --mode with-tool",
+    "test:without-tool": "ts-node test/testFramework.ts --mode without-tool",
+    "test:batch": "ts-node test/batchTest.ts"
+  },
+  "files": [
+    "dist/",
+    "README.md",
+    "LICENSE"
+  ],
+  "keywords": [
+    "mcp",
+    "model-context-protocol",
+    "thinking-model",
+    "chat-agent",
+    "deepseek",
+    "siliconflow",
+    "ai"
+  ],
+  "author": "",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": ""
+  },
+  "bugs": {
+    "url": ""
+  },
+  "homepage": "",
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.8.0",
+    "node-fetch": "^2.7.0",
+    "openai": "^6.44.0",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@types/node": "^26.0.0",
+    "ts-node": "^10.9.2",
+    "typescript": "^6.0.3"
+  }
+}
