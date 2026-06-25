@@ -14,7 +14,8 @@
     "prepublishOnly": "npm run build",
     "test:with-tool": "ts-node test/testFramework.ts --mode with-tool",
     "test:without-tool": "ts-node test/testFramework.ts --mode without-tool",
-    "test:batch": "ts-node test/batchTest.ts"
+    "test:batch": "ts-node test/batchTest.ts",
+    "test:comparison": "ts-node test/comparisonTest.ts"
   },
   "files": [
     "dist/",

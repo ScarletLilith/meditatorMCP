@@ -8,7 +8,7 @@ export interface GatekeeperSettings {
 }
 
 const DEFAULT_SETTINGS: GatekeeperSettings = {
-  maxNodesPerSession: Number(process.env.MAX_NODES_PER_SESSION) || 8,
+  maxNodesPerSession: Number(process.env.MAX_NODES_PER_SESSION) || 16,
   minInputTextLength: Number(process.env.MIN_INPUT_TEXT_LENGTH) || 30,
   forbiddenKeywords: [
     "完成整个任务",

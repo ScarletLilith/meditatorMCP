@@ -2,7 +2,7 @@
 
 ## 一、项目概述
 
-构建一个 MCP（Model Context Protocol）Server，暴露一个 `chat_agent` 工具。该工具封装**非思考模型**（DeepSeek-V4-Flash），供**思考模型**在推理过程中调用，实现思维链的外包和延长。
+构建一个 MCP（Model Context Protocol）Server，暴露 `chat_agent`、`create_branch`、`get_branch_details` 三个工具。核心工具 `chat_agent` 封装**非思考模型**（DeepSeek-V4-Flash），供**思考模型**在推理过程中调用，实现思维链的外包和延长。`create_branch` 支持树形思维分支，`get_branch_details` 可回溯分支的完整推理过程。
 
 ### 核心设计理念：自包含任务描述
 
@@ -30,9 +30,9 @@
 ```
 ┌──────────────────────────────────────────────────────────────┐
 │                   MCP Client (思考模型)                        │
-│  DeepSeek-V4-Flash (thinking mode)                           │
+│  DeepSeek-V4-Pro (thinking mode)                            │
 │  - 深度推理                                                  │
-│  - 构建自包含的 input_text 调用 chat_agent                     │
+│  - 构建自包含的 input_text 调用各工具                          │
 │  - 整合工具返回结果                                           │
 └──────────────────────┬───────────────────────────────────────┘
                        │ stdio 通信 (MCP Protocol)
@@ -40,16 +40,20 @@
 ┌──────────────────────────────────────────────────────────────┐
 │                    MCP Server (本项目)                         │
 │  ┌────────────────────────────────────────────────────────┐  │
-│  │  chat_agent Tool                                       │  │
-│  │  参数: {input_text, temperature, top_p,                │  │
-│  │         max_tokens, stop}                              │  │
-│  │  input_text 直接作为 user message 传递给非思考模型       │  │
+│  │  chat_agent Tool              create_branch Tool       │  │
+│  │  参数: {input_text,           参数: {session_id,       │  │
+│  │         temperature, top_p,          input_text,       │  │
+│  │         max_tokens, stop,            call_type,        │  │
+│  │         seed}                       parent_node_id}    │  │
+│  │  get_branch_details Tool                                │  │
+│  │  参数: {session_id, node_id}                            │  │
 │  └────────────┬───────────────────────────────────────────┘  │
 │               │ HTTP Request                                  │
 │               ▼                                               │
 │  ┌────────────────────────────────────────────────────────┐  │
-│  │  SiliconFlow API (OpenAI Chat Completions 格式)        │  │
-│  │  Model: deepseek-ai/DeepSeek-V4-Flash (non-thinking)   │  │
+│  │  DeepSeek API / SiliconFlow API (OpenAI 兼容格式)      │  │
+│  │  思考模型 -> deepseek-v4-pro (thinking mode)           │  │
+│  │  工具模型 -> deepseek-v4-flash (non-thinking)          │  │
 │  │  参数透传: temperature, top_p, max_tokens              │  │
 │  └────────────────────────────────────────────────────────┘  │
 └──────────────────────────────────────────────────────────────┘
@@ -175,18 +179,19 @@ mcp/
 │   ├── polyfill.ts        # Node 14 fetch polyfill
 │   ├── index.ts           # MCP Server 入口
 │   ├── logger.ts          # 结构化日志工具
-│   └── chatAgentTool.ts   # chat_agent 工具实现（含校验/重试/错误分类）
+│   ├── schemas.ts         # Zod 校验 Schema
+│   ├── strategyEngine.ts  # 策略引擎（参数映射）
+│   ├── gatekeeper.ts      # 门控器（配额/关键词校验）
+│   ├── nodeStore.ts       # 分支节点存储
+│   └── chatAgentTool.ts   # 工具实现（含校验/重试/错误分类）
 ├── test/
 │   ├── config.json        # API 配置（.gitignore 排除）
 │   ├── testFramework.ts   # 交互式测试框架
-│   ├── batchTest.ts       # 批量对比测试
-│   ├── quickTest.ts       # 快速功能测试
-│   └── thinkingTest.ts    # 思考模型工具测试
+│   ├── comparisonTest.ts  # 对比测试
+│   ├── batchTest.ts       # 批量测试
+│   ├── runA.js            # 场景A测试（DeepSeek）
+│   └── runB.js            # 场景B测试（DeepSeek）
 └── results/               # 测试结果（.gitignore 排除）
-    ├── PROJECT_SUMMARY.md # 项目总结
-    ├── with-tool-*.md     # 使用工具时的对话记录
-    ├── without-tool-*.md  # 纯思考模型的对话记录
-    └── comparison-*.md    # 对比分析
 ```
 
 ---

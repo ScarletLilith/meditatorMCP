@@ -9,3 +9,16 @@ results/
 改进.md
 新智能理论.txt
 i.long
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Editor
+.idea/
+.qoder/
+*.swp
+*.swo
+
+# Test output
+test/results/

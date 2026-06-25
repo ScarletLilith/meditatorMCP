@@ -24,9 +24,10 @@ interface ApiConfig {
 }
 
 function loadConfig(): ApiConfig {
-  const envApiKey = process.env.SILICONFLOW_API_KEY;
-  const envBaseUrl = process.env.SILICONFLOW_BASE_URL;
-  const envModel = process.env.SILICONFLOW_MODEL;
+  // 优先读取 DeepSeek 官方 API 环境变量
+  const envApiKey = process.env.DEEPSEEK_API_KEY || process.env.SILICONFLOW_API_KEY;
+  const envBaseUrl = process.env.DEEPSEEK_BASE_URL || process.env.SILICONFLOW_BASE_URL;
+  const envModel = process.env.DEEPSEEK_MODEL || process.env.SILICONFLOW_MODEL;
 
   if (envApiKey && envBaseUrl && envModel) {
     return { baseUrl: envBaseUrl, model: envModel, apiKey: envApiKey };
@@ -50,7 +51,7 @@ function loadConfig(): ApiConfig {
   }
 
   throw new Error(
-    "API configuration not found. Set environment variables (SILICONFLOW_API_KEY, SILICONFLOW_BASE_URL, SILICONFLOW_MODEL) or create test/config.json"
+    "API configuration not found. Set environment variables (DEEPSEEK_API_KEY / SILICONFLOW_API_KEY, etc.) or create test/config.json"
   );
 }
 
@@ -201,6 +202,10 @@ export const chatAgentTool: Tool = {
     "你可以传入任何需要独立完成且不受对话历史影响的子任务，",
     "包括但不限于：逻辑推理、发散联想、创意生成、优缺点分析、",
     "情景假设、步骤拆解、知识类比与迁移等。",
+    "⚠ 本工具适合单次独立推理。若需要多角度深入探索，",
+    "请改用 create_branch 工具构建树形思维分支（支持递归嵌套）。",
+    "复杂问题建议：先用 create_branch 拆解为多个分支分别验证/发散/深入，",
+    "再综合各分支结论得出最终答案。",
     "请确保 input_text 是一个完整、自包含的任务描述，明确任务类型与目标。",
     "通过调整 temperature（0~2）和 top_p（0~1）控制输出的确定性与多样性。",
     "对于需要精确复现的场景（如校验任务），建议设置 temperature 接近 0 并指定 seed。",
@@ -253,8 +258,21 @@ export const chatAgentTool: Tool = {
 export const createBranchTool: Tool = {
   name: "create_branch",
   description: [
-    "在主干推理中向外生成思维分支。工具将执行外部推理，但仅返回精炼结论，不返回过程，以保护你的上下文。",
-    "当你遇到局部的、自包含的子问题（如验证、发散、深入拆解、临时备忘）时使用。",
+    "创建思维分支节点，支持树形递归嵌套，实现多角度深度思考。",
+    "每次调用创建一个分支，仅返回精炼结论（不返回推理过程），保护主链上下文窗口。\n",
+    "🔑 核心用法：对复杂问题，你应该多次调用本工具创建多个分支，形成思维树。\n",
+    "📌 四种分支类型：\n",
+    "  • drill_down —— 深入拆解某个子问题（低温度，精确聚焦）\n",
+    "  • verify —— 验证某个结论或假设是否正确（极低温度，确定性输出）\n",
+    "  • explore —— 从不同角度发散思考（高温度，创意多样）\n",
+    "  • stash —— 临时记录中间想法，稍后引用（中温度）\n",
+    "🌲 树形嵌套：parent_node_id='trunk' 挂到主干；填入其他 node_id 可在已有分支下创建子分支。\n",
+    "💡 推荐工作流：\n",
+    "  1. 先 explore 一个问题的多种可能方向\n",
+    "  2. 对每个有希望的方向 drill_down 深入\n",
+    "  3. 对关键结论 verify 交叉验证\n",
+    "  4. 综合所有分支结论，输出最终答案\n",
+    "⚡ 你可以（且应该）多次调用本工具。每个分支独立推理，互不干扰。",
   ].join(""),
   inputSchema: {
     type: "object",
@@ -393,6 +411,7 @@ export async function handleChatAgentCall(args: ChatAgentArgs) {
       success: true, content, finish_reason: finishReason,
       usage: result.data.usage ? { prompt_tokens: result.data.usage.prompt_tokens, completion_tokens: result.data.usage.completion_tokens, total_tokens: result.data.usage.total_tokens } : null,
       model: result.data.model,
+      hint: "若需多角度深入探索，请使用 create_branch 工具构建思维树分支",
     }) }],
   };
 }
@@ -469,12 +488,37 @@ export async function handleCreateBranchCall(args: CreateBranchInput) {
     raw_length: node.raw_process.length,
   });
 
+  // 获取当前会话的节点数和剩余配额
+  const currentCount = nodeStore.getNodeCount(input.session_id);
+  const maxNodes = Number(process.env.MAX_NODES_PER_SESSION) || 16;
+  const remaining = maxNodes - currentCount;
+
+  // 根据 confidence 和 call_type 生成后续建议
+  const suggestions: string[] = [];
+  if (node.confidence !== null && node.confidence < 0.7) {
+    suggestions.push("该结论置信度较低，建议用 verify 类型创建验证分支");
+  }
+  if (input.call_type === "explore") {
+    suggestions.push("发散探索完成，可对有价值的方向用 drill_down 深入");
+  }
+  if (input.call_type === "drill_down") {
+    suggestions.push("深入分析完成，可用 verify 验证关键前提，或 explore 探索替代方案");
+  }
+  if (input.call_type === "verify") {
+    suggestions.push("验证完成，可继续验证其他关键假设，或综合已有分支得出结论");
+  }
+  if (remaining > 3) {
+    suggestions.push(`还可创建 ${remaining} 个分支，建议继续多角度探索`);
+  }
+
   return {
     content: [{ type: "text" as const, text: JSON.stringify({
       status: "success",
       node_id: node.node_id,
       conclusion: node.conclusion,
       confidence: node.confidence,
+      remaining_quota: remaining,
+      suggestions,
     }) }],
   };
 }
